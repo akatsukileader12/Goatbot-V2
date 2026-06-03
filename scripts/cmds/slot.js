@@ -4,7 +4,7 @@ module.exports = {
   config: {
     name: "slot",
     aliases: ["slots"],
-    version: "2.0",
+    version: "2.1",
     author: "CharlesMK",
     countDown: 30,
     role: 0,
@@ -13,14 +13,13 @@ module.exports = {
     },
     category: "game",
     guide: {
-      en: "{pn} <amount>\nExample: {pn} 50\n\n⏰ Limit: 10 spins per hour"
+      en: "{pn} <amount>\nExample: {pn} 50\n\n⏰ Limit: 10 spins per hour\n💵 Max bet: $50,000"
     }
   },
 
   onStart: async function ({ args, message, event, usersData }) {
     const { senderID } = event;
 
-    // Format balance — handles numbers of any size cleanly
     function formatBalance(num) {
       const abs = Math.abs(num);
       const sign = num < 0 ? "-" : "";
@@ -46,7 +45,6 @@ module.exports = {
       return `${sign}$${abs.toLocaleString()}`;
     }
 
-    // Check if user wants to see their remaining spins
     if (args[0] && args[0].toLowerCase() === "status") {
       const usage = slotUsage.get(senderID);
 
@@ -87,26 +85,31 @@ module.exports = {
       return message.reply("❌ Please enter a valid amount.\nExample: +slot 50\n\nCheck status: +slot status");
     }
 
-    // Get or initialize user's slot usage
+    // ── Bet limit ─────────────────────────────────────────────────
+    if (spinAmount > 50000) {
+      return message.reply(
+        `🚫 𝗕𝗘𝗧 𝗟𝗜𝗠𝗜𝗧 𝗘𝗫𝗖𝗘𝗘𝗗𝗘𝗗\n\n` +
+        `Maximum bet per spin is $50,000.\n` +
+        `💡 Use +bank to grow your money safely instead.`
+      );
+    }
+
     const now = Date.now();
     let usage = slotUsage.get(senderID);
 
-    // Reset if cooldown period has passed
     if (usage && now >= usage.resetTime) {
       slotUsage.delete(senderID);
       usage = null;
     }
 
-    // Initialize usage if not exists
     if (!usage) {
       usage = {
         spins: 0,
-        resetTime: now + 3600000 // 1 hour from now
+        resetTime: now + 3600000
       };
       slotUsage.set(senderID, usage);
     }
 
-    // Check if user has exceeded spin limit
     if (usage.spins >= 10) {
       const timeLeft = usage.resetTime - now;
       const minutes = Math.floor(timeLeft / 60000);
@@ -137,7 +140,6 @@ module.exports = {
     const reel2 = spin();
     const reel3 = spin();
 
-    // Box display for reels
     const reelDisplay =
       `🎰 SLOT MACHINE\n\n` +
       `┌───────────────┐\n` +
@@ -149,21 +151,18 @@ module.exports = {
     let resultText = "";
 
     if (chance < 0.1) {
-      // JACKPOT 10% - 6x multiplier
       reward = spinAmount * 6;
       resultText =
         `${reelDisplay}\n\n` +
         `🎉 𝙅𝘼𝘾𝙆𝙋𝙊𝙏 𝙒𝙄𝙉 🎉\n` +
         `+$${reward}`;
     } else if (chance < 0.6) {
-      // NORMAL WIN 50% - 2x multiplier
       reward = spinAmount * 2;
       resultText =
         `${reelDisplay}\n\n` +
         `✨ 𝙔𝙊𝙐 𝙒𝙊𝙉!\n` +
         `+$${reward}`;
     } else {
-      // LOSS 40%
       reward = -spinAmount;
       resultText =
         `${reelDisplay}\n\n` +
@@ -173,16 +172,14 @@ module.exports = {
 
     const newBalance = balance + reward;
 
-    // Increment spin count
     usage.spins += 1;
     slotUsage.set(senderID, usage);
 
     const spinsLeft = 10 - usage.spins;
 
     await usersData.set(senderID, {
+      ...userData,
       money: newBalance,
-      exp: userData.exp,
-      data: userData.data
     });
 
     const spinInfo = spinsLeft > 0
