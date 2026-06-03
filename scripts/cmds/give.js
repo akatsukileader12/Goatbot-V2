@@ -1,91 +1,96 @@
 module.exports = {
   config: {
-    name: "give",
-    aliases: ["pay", "transfer"],
-    version: "1.1",
-    author: "Charles MK",
+    name: "transfer",
+    aliases: ["pay", "send", "give"],
+    version: "1.0",
+    author: "CharlesMK",
     countDown: 5,
     role: 0,
+    description: "Transfer money to another user (max $100,000 per transfer)",
     category: "economy",
     guide: {
-      en: "{pn} [amount] (reply or tag/uid)"
+      en: "{pn} @mention <amount>\n{pn} <uid> <amount>\n\nExample: {pn} @John 50000\n\n💸 Max transfer: $100,000"
     }
   },
 
-  onStart: async function ({ api, event, args, usersData, message }) {
-    const { senderID, messageReply, mentions } = event;
+  onStart: async function ({ args, message, event, usersData, api }) {
+    const { senderID, mentions, messageReply } = event;
 
-    // 1. Determine Target User and Amount
-    let targetID;
-    let amountStr;
+    const MAX_TRANSFER = 100000;
+
+    // ── Resolve target ────────────────────────────────────────────
+    let targetID = null;
+    let amount = null;
 
     if (messageReply) {
       targetID = messageReply.senderID;
-      amountStr = args[0];
+      amount = parseInt(args[0]);
     } else if (Object.keys(mentions).length > 0) {
       targetID = Object.keys(mentions)[0];
-      amountStr = args.find(arg => !isNaN(parseInt(arg)) && parseInt(arg) > 0);
-    } else if (args.length >= 2) {
+      amount = parseInt(args[1]);
+    } else if (args[0] && /^\d{10,}$/.test(args[0])) {
       targetID = args[0];
-      amountStr = args[1];
+      amount = parseInt(args[1]);
     }
 
-    const amount = parseInt(amountStr);
-
-    // 2. Validation Checks
     if (!targetID || isNaN(amount) || amount <= 0) {
-      return message.reply("⚠️ 𝖯𝗅𝖾𝖺𝗌𝖾 𝖾𝗇𝗍𝖾𝗋 𝖺 𝗏𝖺𝗅𝗂𝖽 𝖺𝗆𝗈𝗎𝗇𝗍 𝖺𝗇𝖽 𝗌𝗉𝖾𝖼𝗂𝖿𝗒 𝖺 𝗎𝗌𝖾𝗋 (𝗋𝖾𝗉𝗅𝗒, 𝗍𝖺𝗀, 𝗈𝗋 𝖴𝖨𝖣).");
-    }
-
-    if (targetID == senderID) {
-      return message.reply("🤡 𝖸𝗈𝗎 𝖼𝖺𝗇'𝗍 𝗀𝗂𝗏𝖾 𝗆𝗈𝗇𝖾𝗒 𝗍𝗈 𝗒𝗈𝗎𝗋𝗌𝖾𝗅𝖿, 𝗇𝗂𝖼𝖾 𝗍𝗋𝗒.");
-    }
-
-    const senderData = await usersData.get(senderID);
-    const receiverData = await usersData.get(targetID);
-
-    if (!receiverData) {
-      return message.reply("❌ 𝖴𝗌𝖾𝗋 𝗇𝗈𝗍 𝖿𝗈𝗎𝗇𝖽 𝗂𝗇 𝗍𝗁𝖾 𝖽𝖺𝗍𝖺𝖻𝖺𝗌𝖾.");
-    }
-
-    // 3. Fee Calculation
-    const fee = Math.floor(amount * 0.06);       // 6% fee deducted from sender
-    const totalDeducted = amount + fee;           // Sender loses amount + fee
-    const receiverGets = amount;                  // Receiver gets the full amount
-
-    if (senderData.money < totalDeducted) {
       return message.reply(
-        `💸 𝖸𝗈𝗎 𝖼𝖺𝗇'𝗍 𝖺𝖿𝖿𝗈𝗋𝖽 𝗍𝗁𝗂𝗌 𝗍𝗋𝖺𝗇𝗌𝖿𝖾𝗋!\n` +
-        `💰 𝖠𝗆𝗈𝗎𝗇𝗍: $${amount.toLocaleString()}\n` +
-        `🏦 𝖥𝖾𝖾 (6%): $${fee.toLocaleString()}\n` +
-        `📊 𝖳𝗈𝗍𝖺𝗅 𝖭𝖾𝖾𝖽𝖾𝖽: $${totalDeducted.toLocaleString()}\n` +
-        `💳 𝖸𝗈𝗎𝗋 𝖡𝖺𝗅𝖺𝗇𝖼𝖾: $${senderData.money.toLocaleString()}`
+        `❌ 𝗜𝗡𝗩𝗔𝗟𝗜𝗗 𝗨𝗦𝗔𝗚𝗘\n\n` +
+        `Usage:\n` +
+        `• +transfer @mention <amount>\n` +
+        `• +transfer <uid> <amount>\n` +
+        `• Reply to a message + +transfer <amount>\n\n` +
+        `💸 Max per transfer: $${MAX_TRANSFER.toLocaleString()}`
       );
     }
 
-    // 4. Apply Transaction
-    const finalSenderMoney = senderData.money - totalDeducted;
-    const finalReceiverMoney = (receiverData.money || 0) + receiverGets;
+    if (targetID === senderID) {
+      return message.reply(`❌ You can't transfer money to yourself.`);
+    }
 
-    await usersData.set(targetID, { money: finalReceiverMoney });
-    await usersData.set(senderID, { money: finalSenderMoney });
+    // ── Transfer cap ──────────────────────────────────────────────
+    if (amount > MAX_TRANSFER) {
+      return message.reply(
+        `🚫 𝗧𝗥𝗔𝗡𝗦𝗙𝗘𝗥 𝗟𝗜𝗠𝗜𝗧 𝗘𝗫𝗖𝗘𝗘𝗗𝗘𝗗\n\n` +
+        `Maximum transfer amount is $${MAX_TRANSFER.toLocaleString()} per transaction.\n` +
+        `💡 Use +bank to store large amounts safely.`
+      );
+    }
 
-    // 5. Send Success Message
-    const senderName = senderData.name;
-    const receiverName = receiverData.name;
+    // ── Balance check ─────────────────────────────────────────────
+    const senderData = await usersData.get(senderID);
+    const senderBalance = senderData.money || 0;
 
-    return api.sendMessage(
-      `💸 𝗧𝗥𝗔𝗡𝗦𝗙𝗘𝗥 𝗦𝗨𝗖𝗖𝗘𝗦𝗦𝗙𝗨𝗟\n` +
+    if (senderBalance < amount) {
+      return message.reply(
+        `❌ 𝗜𝗡𝗦𝗨𝗙𝗙𝗜𝗖𝗜𝗘𝗡𝗧 𝗙𝗨𝗡𝗗𝗦\n\n` +
+        `💰 Your balance: $${senderBalance.toLocaleString()}\n` +
+        `💸 Transfer amount: $${amount.toLocaleString()}`
+      );
+    }
+
+    // ── Get target info ───────────────────────────────────────────
+    const targetData = await usersData.get(targetID);
+    let targetName = targetData.name || "User";
+
+    // ── Execute transfer ──────────────────────────────────────────
+    await usersData.set(senderID, {
+      ...senderData,
+      money: senderBalance - amount
+    });
+
+    await usersData.set(targetID, {
+      ...targetData,
+      money: (targetData.money || 0) + amount
+    });
+
+    return message.reply(
+      `✅ 𝗧𝗥𝗔𝗡𝗦𝗙𝗘𝗥 𝗦𝗨𝗖𝗖𝗘𝗦𝗦𝗙𝗨𝗟\n` +
+      `━━━━━━━━━━━━━━━━━━\n\n` +
+      `👤 To: ${targetName}\n` +
+      `💸 Amount: $${amount.toLocaleString()}\n\n` +
       `━━━━━━━━━━━━━━━━━━\n` +
-      `👤 𝖥𝗋𝗈𝗆: ${senderName}\n` +
-      `👤 𝖳𝗈: ${receiverName}\n` +
-      `💰 𝖠𝗆𝗈𝗎𝗇𝗍 𝖲𝖾𝗇𝗍: $${receiverGets.toLocaleString()}\n` +
-      `🏦 𝖳𝗋𝖺𝗇𝗌𝖿𝖾𝗋 𝖥𝖾𝖾 (6%): -$${fee.toLocaleString()}\n` +
-      `📊 𝖳𝗈𝗍𝖺𝗅 𝖣𝖾𝖽𝗎𝖼𝗍𝖾𝖽: $${totalDeducted.toLocaleString()}\n` +
-      `💳 𝖸𝗈𝗎𝗋 𝖭𝖾𝗐 𝖡𝖺𝗅𝖺𝗇𝖼𝖾: $${finalSenderMoney.toLocaleString()}\n` +
-      `━━━━━━━━━━━━━━━━━━`,
-      event.threadID,
-      event.messageID
+      `💰 Your balance: $${(senderBalance - amount).toLocaleString()}`
     );
   }
 };
