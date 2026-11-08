@@ -1,7 +1,7 @@
 FROM node:slim
 
-# Install Python, build essentials, and python3-distutils for legacy node-gyp compilation
-RUN apt-get update && apt-get install -y python3 python3-dev python3-distutils make g++
+# Install Python, pip, setuptools (provides distutils), and build tools
+RUN apt-get update && apt-get install -y python3 python3-dev python3-pip python3-setuptools make g++
 
 WORKDIR /app
 
